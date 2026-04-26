@@ -1,0 +1,290 @@
+version: "3.9"
+
+# ============================================================
+# DISTRIBUTED CACHING DEMO — FULL INFRASTRUCTURE
+# ============================================================
+#
+# Services:
+#   mysql          → Primary database (source of truth)
+#   redis-node-1..6 → Redis Cluster (3 masters + 3 replicas)
+#   redis-init     → One-time cluster bootstrap job
+#   app-1, app-2   → Two Spring Boot instances (shared Redis cache)
+#
+# Network: all services on 'cache-network' (172.20.0.0/16)
+#
+# Port map (host → container):
+#   3306  → MySQL
+#   7001–7006 → Redis cluster nodes
+#   8080  → Spring Boot instance 1
+#   8081  → Spring Boot instance 2
+#   8082  → Spring Boot instance 2
+# ============================================================
+
+networks:
+  cache-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  mysql-data:
+  redis-data-1:
+  redis-data-2:
+  redis-data-3:
+  redis-data-4:
+  redis-data-5:
+  redis-data-6:
+
+services:
+
+  # ─────────────────────────────────────────────────────────
+  # MySQL — Source of Truth
+  # ─────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: userdb
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: apppass
+    ports:
+      - "3307:3307"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      cache-network:
+        ipv4_address: 172.20.0.10
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+
+  # ─────────────────────────────────────────────────────────
+  # Redis Cluster — 3 Masters + 3 Replicas
+  # ─────────────────────────────────────────────────────────
+  redis-node-1:
+    image: redis:7.2-alpine
+    container_name: redis-node-1
+    restart: unless-stopped
+    ports:
+      - "7001:7001"
+      - "17001:17001"   # Cluster bus port (node port + 10000)
+    volumes:
+      - redis-data-1:/data
+      - ./docker/redis-cluster/redis.conf:/etc/redis/redis.conf:ro
+    networks:
+      cache-network:
+        ipv4_address: 172.20.0.21
+    command: >
+      redis-server /etc/redis/redis.conf
+      --port 7001
+      --cluster-announce-ip 172.20.0.21
+      --cluster-announce-port 7001
+      --cluster-announce-bus-port 17001
+
+  redis-node-2:
+    image: redis:7.2-alpine
+    container_name: redis-node-2
+    restart: unless-stopped
+    ports:
+      - "7002:7002"
+      - "17002:17002"
+    volumes:
+      - redis-data-2:/data
+      - ./docker/redis-cluster/redis.conf:/etc/redis/redis.conf:ro
+    networks:
+      cache-network:
+        ipv4_address: 172.20.0.22
+    command: >
+      redis-server /etc/redis/redis.conf
+      --port 7002
+      --cluster-announce-ip 172.20.0.22
+      --cluster-announce-port 7002
+      --cluster-announce-bus-port 17002
+
+  redis-node-3:
+    image: redis:7.2-alpine
+    container_name: redis-node-3
+    restart: unless-stopped
+    ports:
+      - "7003:7003"
+      - "17003:17003"
+    volumes:
+      - redis-data-3:/data
+      - ./docker/redis-cluster/redis.conf:/etc/redis/redis.conf:ro
+    networks:
+      cache-network:
+        ipv4_address: 172.20.0.23
+    command: >
+      redis-server /etc/redis/redis.conf
+      --port 7003
+      --cluster-announce-ip 172.20.0.23
+      --cluster-announce-port 7003
+      --cluster-announce-bus-port 17003
+
+  redis-node-4:
+    image: redis:7.2-alpine
+    container_name: redis-node-4
+    restart: unless-stopped
+    ports:
+      - "7004:7004"
+      - "17004:17004"
+    volumes:
+      - redis-data-4:/data
+      - ./docker/redis-cluster/redis.conf:/etc/redis/redis.conf:ro
+    networks:
+      cache-network:
+        ipv4_address: 172.20.0.24
+    command: >
+      redis-server /etc/redis/redis.conf
+      --port 7004
+      --cluster-announce-ip 172.20.0.24
+      --cluster-announce-port 7004
+      --cluster-announce-bus-port 17004
+
+  redis-node-5:
+    image: redis:7.2-alpine
+    container_name: redis-node-5
+    restart: unless-stopped
+    ports:
+      - "7005:7005"
+      - "17005:17005"
+    volumes:
+      - redis-data-5:/data
+      - ./docker/redis-cluster/redis.conf:/etc/redis/redis.conf:ro
+    networks:
+      cache-network:
+        ipv4_address: 172.20.0.25
+    command: >
+      redis-server /etc/redis/redis.conf
+      --port 7005
+      --cluster-announce-ip 172.20.0.25
+      --cluster-announce-port 7005
+      --cluster-announce-bus-port 17005
+
+  redis-node-6:
+    image: redis:7.2-alpine
+    container_name: redis-node-6
+    restart: unless-stopped
+    ports:
+      - "7006:7006"
+      - "17006:17006"
+    volumes:
+      - redis-data-6:/data
+      - ./docker/redis-cluster/redis.conf:/etc/redis/redis.conf:ro
+    networks:
+      cache-network:
+        ipv4_address: 172.20.0.26
+    command: >
+      redis-server /etc/redis/redis.conf
+      --port 7006
+      --cluster-announce-ip 172.20.0.26
+      --cluster-announce-port 7006
+      --cluster-announce-bus-port 17006
+
+  # ─────────────────────────────────────────────────────────
+  # Redis Cluster Bootstrap (runs once, then exits)
+  # ─────────────────────────────────────────────────────────
+  redis-cluster-init:
+    image: redis:7.2-alpine
+    container_name: redis-cluster-init
+    depends_on:
+      - redis-node-1
+      - redis-node-2
+      - redis-node-3
+      - redis-node-4
+      - redis-node-5
+      - redis-node-6
+    volumes:
+      - ./docker/redis-cluster/create-cluster.sh:/create-cluster.sh:ro
+    networks:
+      - cache-network
+    command: sh /create-cluster.sh
+    restart: "no"   # Run once only
+
+  # ─────────────────────────────────────────────────────────
+  # Spring Boot Instance 1
+  # ─────────────────────────────────────────────────────────
+  app-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-1
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis-cluster-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 9090
+      INSTANCE_ID: app-instance-1
+    ports:
+      - "9090:9090"
+    networks:
+      cache-network:
+        ipv4_address: 172.20.0.31
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────
+  # Spring Boot Instance 2
+  # ─────────────────────────────────────────────────────────
+  app-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-2
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis-cluster-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 9091
+      INSTANCE_ID: app-instance-2
+    ports:
+      - "9091:9091"
+    networks:
+      cache-network:
+        ipv4_address: 172.20.0.32
+
+  # ─────────────────────────────────────────────────────────
+  # Spring Boot Instance 3 (optional, for load demo)
+  # ─────────────────────────────────────────────────────────
+  app-3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-3
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis-cluster-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 9092
+      INSTANCE_ID: app-instance-3
+    ports:
+      - "9092:9092"
+    networks:
+      cache-network:
+        ipv4_address: 172.20.0.33
